@@ -12,6 +12,12 @@ on:
     paths:
       - "package.json"
 
+# 显式授予写入权限：创建 Release / 推送 tag 需要 contents: write
+# packages: write 用于后续可能的 GHCR 推送（当前未启用，可留作扩展）
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
