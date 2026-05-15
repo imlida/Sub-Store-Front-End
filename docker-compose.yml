@@ -1,48 +1,80 @@
-# Sub-Store-Front-End Docker Compose 配置
+# Sub-Store Docker Compose 配置（前后端一体单容器）
 # 使用方式：
 #   1. 直接拉取已发布的镜像运行：docker compose up -d
 #   2. 本地源码构建运行：docker compose --profile build up -d --build
 # 镜像仓库：https://hub.docker.com/r/aigood/sub-store-front-end
+#
+# 单容器内同时运行：
+#   - nginx：托管前端静态资源 + 反向代理后端 API（监听 80）
+#   - node sub-store.bundle.js：Sub-Store 后端（仅 127.0.0.1:3000，不对外暴露）
+#
+# 浏览器访问前端后，在「设置 -> 后端地址」里填写：
+#   http://<宿主机IP>:${HOST_PORT:-3001}${SUB_STORE_FRONTEND_BACKEND_PATH:-/api}
+# 例：http://192.168.31.5:3001/api
 
 services:
-  # 生产服务：从 Docker Hub 拉取已发布的多架构镜像
-  sub-store-front-end:
+  sub-store:
     # 通过环境变量覆盖镜像版本，默认 latest
-    # 例如：SUB_STORE_FRONT_END_TAG=2.17.6 docker compose up -d
-    image: aigood/sub-store-front-end:${SUB_STORE_FRONT_END_TAG:-latest}
-    container_name: sub-store-front-end
+    # 例如：SUB_STORE_TAG=2.17.6 docker compose up -d
+    image: aigood/sub-store-front-end:${SUB_STORE_TAG:-latest}
+    container_name: sub-store
     restart: unless-stopped
     ports:
-      # 宿主机端口可通过环境变量 HOST_PORT 自定义，默认 3000
-      - "${HOST_PORT:-3000}:80"
-    # 简单的健康检查：nginx 默认页可访问即视为健康
+      # 宿主机端口可通过 HOST_PORT 自定义，默认 3001（与现有内网部署 192.168.31.5:3001 一致）
+      - "${HOST_PORT:-3001}:80"
+    environment:
+      # 后端监听 0.0.0.0 即可，nginx 通过 127.0.0.1 反向代理过去
+      SUB_STORE_BACKEND_API_HOST: 0.0.0.0
+      SUB_STORE_BACKEND_API_PORT: 3000
+      # 前端访问后端的路径前缀，建议改为不易猜测的随机串（同步影响 nginx 反向代理路径）
+      # 例：SUB_STORE_FRONTEND_BACKEND_PATH=/Aa1Bb2Cc3Dd4
+      SUB_STORE_FRONTEND_BACKEND_PATH: ${SUB_STORE_FRONTEND_BACKEND_PATH:-/api}
+      # 后端数据持久化目录（容器内）
+      SUB_STORE_DATA_BASE_PATH: /opt/app/data
+      # 可选：定时任务 cron 表达式，按需开启
+      # SUB_STORE_BACKEND_CRON: "55 23 * * *"
+      # SUB_STORE_BACKEND_SYNC_CRON: "0 0 * * *"
+    volumes:
+      # 持久化订阅配置/数据，容器重建后不会丢失
+      - ./data:/opt/app/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      # 直接打后端 API，连通性 + 后端进程都能验证
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1${SUB_STORE_FRONTEND_BACKEND_PATH:-/api}/api/utils/env"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
-    # 资源限制（可按需调整或删除）
+      start_period: 20s
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 128M
+          cpus: "1.0"
+          memory: 512M
     networks:
       - sub-store-net
 
   # 可选：本地源码构建，仅在 --profile build 下生效
-  # 适用于尚未发版、想在本地直接试运行的场景
-  sub-store-front-end-build:
+  # 使用前需先执行 pnpm build 生成 dist/，然后：
+  #   docker compose --profile build up -d --build
+  sub-store-build:
     profiles: ["build"]
     build:
       context: .
       dockerfile: Dockerfile
-    image: sub-store-front-end:local
-    container_name: sub-store-front-end-local
+      args:
+        # 可指定后端版本，留空 / latest 则下载最新
+        SUB_STORE_BACKEND_VERSION: ${SUB_STORE_BACKEND_VERSION:-latest}
+    image: sub-store:local
+    container_name: sub-store-local
     restart: unless-stopped
     ports:
-      - "${HOST_PORT_LOCAL:-3001}:80"
+      - "${HOST_PORT_LOCAL:-3002}:80"
+    environment:
+      SUB_STORE_BACKEND_API_HOST: 0.0.0.0
+      SUB_STORE_BACKEND_API_PORT: 3000
+      SUB_STORE_FRONTEND_BACKEND_PATH: ${SUB_STORE_FRONTEND_BACKEND_PATH:-/api}
+      SUB_STORE_DATA_BASE_PATH: /opt/app/data
+    volumes:
+      - ./data:/opt/app/data
     networks:
       - sub-store-net
 
