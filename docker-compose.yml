@@ -1,0 +1,51 @@
+# Sub-Store-Front-End Docker Compose 配置
+# 使用方式：
+#   1. 直接拉取已发布的镜像运行：docker compose up -d
+#   2. 本地源码构建运行：docker compose --profile build up -d --build
+# 镜像仓库：https://hub.docker.com/r/aigood/sub-store-front-end
+
+services:
+  # 生产服务：从 Docker Hub 拉取已发布的多架构镜像
+  sub-store-front-end:
+    # 通过环境变量覆盖镜像版本，默认 latest
+    # 例如：SUB_STORE_FRONT_END_TAG=2.17.6 docker compose up -d
+    image: aigood/sub-store-front-end:${SUB_STORE_FRONT_END_TAG:-latest}
+    container_name: sub-store-front-end
+    restart: unless-stopped
+    ports:
+      # 宿主机端口可通过环境变量 HOST_PORT 自定义，默认 3000
+      - "${HOST_PORT:-3000}:80"
+    # 简单的健康检查：nginx 默认页可访问即视为健康
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # 资源限制（可按需调整或删除）
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    networks:
+      - sub-store-net
+
+  # 可选：本地源码构建，仅在 --profile build 下生效
+  # 适用于尚未发版、想在本地直接试运行的场景
+  sub-store-front-end-build:
+    profiles: ["build"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sub-store-front-end:local
+    container_name: sub-store-front-end-local
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT_LOCAL:-3001}:80"
+    networks:
+      - sub-store-net
+
+networks:
+  sub-store-net:
+    driver: bridge
