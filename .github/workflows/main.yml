@@ -51,10 +51,12 @@ jobs:
           pnpm i -D conventional-changelog-cli
           pnpm run changelog
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: ${{ success() }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 优先使用自定义 PAT（如未配置则回退仓库默认 GITHUB_TOKEN）
+          # 请在仓库 Settings → Secrets 中新增 RELEASE_TOKEN，权限需包含 repo (contents: write)
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           body_path: ./CHANGELOG.md
           tag_name: ${{ steps.tag.outputs.release_tag }}
