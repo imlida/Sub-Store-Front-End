@@ -1,38 +1,67 @@
 #!/bin/sh
 # Sub-Store 一体容器启动脚本
 # 作用：
-#   1. 用 envsubst 把 nginx 模板里的 ${BACKEND_PATH} 替换为 $SUB_STORE_FRONTEND_BACKEND_PATH
-#   2. 并行启动 Sub-Store 后端 (node) 和 nginx
-#   3. 任一进程退出则整体退出，便于 docker 重启策略接管
+#   1. 规范化 SUB_STORE_FRONTEND_BACKEND_PATH（保证以 / 开头、不以 / 结尾）
+#   2. 用 envsubst 把 nginx 模板里的 ${BACKEND_PATH} 替换为规范化后的值
+#   3. 并行启动 Sub-Store 后端 (node) 和 nginx
+#   4. 任一进程退出则整体退出，便于 docker 重启策略接管
+#
+# 注意：
+#   - Sub-Store 后端实际响应路径是 ${SUB_STORE_FRONTEND_BACKEND_PATH}/api/...
+#   - 因此该变量留空（默认）时，后端响应 /api/...，nginx 反代 /api/
+#   - 设置为 /Aa1Bb2 时，后端响应 /Aa1Bb2/api/...，nginx 反代 /Aa1Bb2/api/
 
 set -eu
 
-BACKEND_PATH="${SUB_STORE_FRONTEND_BACKEND_PATH:-/api}"
+# ---------- 1. 规范化 BACKEND_PATH ----------
+RAW_PATH="${SUB_STORE_FRONTEND_BACKEND_PATH:-}"
+BACKEND_PATH=""
+if [ -n "$RAW_PATH" ]; then
+  # 补前导斜杠
+  case "$RAW_PATH" in
+    /*) BACKEND_PATH="$RAW_PATH" ;;
+     *) BACKEND_PATH="/$RAW_PATH" ;;
+  esac
+  # 去掉尾部斜杠，避免出现 //api/
+  BACKEND_PATH="${BACKEND_PATH%/}"
+fi
 export BACKEND_PATH
+# 把规范化后的值同步回 SUB_STORE_FRONTEND_BACKEND_PATH，确保后端读到的是同一份
+export SUB_STORE_FRONTEND_BACKEND_PATH="$BACKEND_PATH"
 
+# ---------- 2. 渲染 nginx 配置 ----------
 # 仅替换 ${BACKEND_PATH}，避免误伤 nginx 自带变量（如 $uri、$host）
 envsubst '${BACKEND_PATH}' \
   < /etc/nginx/templates/default.conf.template \
   > /etc/nginx/http.d/default.conf
 
-echo "[entrypoint] BACKEND_PATH=${BACKEND_PATH}"
-echo "[entrypoint] backend listen at ${SUB_STORE_BACKEND_API_HOST:-0.0.0.0}:${SUB_STORE_BACKEND_API_PORT:-3000}"
-echo "[entrypoint] data dir: ${SUB_STORE_DATA_BASE_PATH:-/opt/app/data}"
+echo "[entrypoint] ============================================="
+echo "[entrypoint] SUB_STORE_FRONTEND_BACKEND_PATH = '${SUB_STORE_FRONTEND_BACKEND_PATH}'"
+echo "[entrypoint] backend listen           = ${SUB_STORE_BACKEND_API_HOST:-0.0.0.0}:${SUB_STORE_BACKEND_API_PORT:-3000}"
+echo "[entrypoint] backend response prefix  = ${BACKEND_PATH}/api/..."
+echo "[entrypoint] nginx proxy location     = ${BACKEND_PATH}/api/"
+echo "[entrypoint] data dir                 = ${SUB_STORE_DATA_BASE_PATH:-/opt/app/data}"
+echo "[entrypoint] ============================================="
+echo "[entrypoint] rendered nginx config (location blocks):"
+grep -nE "^\s*location " /etc/nginx/http.d/default.conf || true
+echo "[entrypoint] ============================================="
 
-# 信号转发：收到 TERM/INT 时通知子进程退出
+# ---------- 3. 校验 nginx 配置 ----------
+nginx -t
+
+# ---------- 4. 信号转发 ----------
 term() {
   echo "[entrypoint] caught signal, stopping children..."
   [ -n "${BACKEND_PID:-}" ] && kill -TERM "$BACKEND_PID" 2>/dev/null || true
-  [ -n "${NGINX_PID:-}" ] && kill -TERM "$NGINX_PID" 2>/dev/null || true
+  [ -n "${NGINX_PID:-}" ]   && kill -TERM "$NGINX_PID"   2>/dev/null || true
   wait
 }
 trap term INT TERM
 
-# 启动 Sub-Store 后端
+# ---------- 5. 启动后端 + nginx ----------
 node /opt/app/sub-store.bundle.js &
 BACKEND_PID=$!
 
-# 启动 nginx（前台运行）
 nginx -g 'daemon off;' &
 NGINX_PID=$!
 

@@ -48,9 +48,11 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # 后端运行时默认环境变量（可在 docker-compose.yml / docker run -e 覆盖）
+# 注意：SUB_STORE_FRONTEND_BACKEND_PATH 默认留空，后端会响应 /api/...
+#       如果设为 /Aa1Bb2，后端会响应 /Aa1Bb2/api/...
 ENV SUB_STORE_BACKEND_API_HOST=0.0.0.0 \
     SUB_STORE_BACKEND_API_PORT=3000 \
-    SUB_STORE_FRONTEND_BACKEND_PATH=/api \
+    SUB_STORE_FRONTEND_BACKEND_PATH="" \
     SUB_STORE_DATA_BASE_PATH=/opt/app/data
 
 # 数据持久化目录
