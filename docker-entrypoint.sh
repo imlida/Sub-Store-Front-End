@@ -7,8 +7,8 @@
 #   4. 任一进程退出则整体退出，便于 docker 重启策略接管
 #
 # 注意：
-#   - Sub-Store 后端始终只在 /api/... 监听，不读 SUB_STORE_FRONTEND_BACKEND_PATH
-#   - 该变量仅作为 nginx 反代路径伪装：/<PATH>/api/xxx 被重写为 /api/xxx 后转发后端
+#   - Sub-Store 后端提供 /api/...、/download/...、/share/... 固定路由
+#   - 该变量仅作为 nginx 反代路径伪装：/<PATH>/<route>/xxx 被重写为 /<route>/xxx 后转发后端
 #   - 留空（默认）：前端填 /api；设为 /Aa1Bb2：前端填 /Aa1Bb2/api
 
 set -eu
@@ -38,8 +38,9 @@ envsubst '${BACKEND_PATH}' \
 echo "[entrypoint] ============================================="
 echo "[entrypoint] SUB_STORE_FRONTEND_BACKEND_PATH = '${SUB_STORE_FRONTEND_BACKEND_PATH}'"
 echo "[entrypoint] backend listen           = ${SUB_STORE_BACKEND_API_HOST:-0.0.0.0}:${SUB_STORE_BACKEND_API_PORT:-3000}"
-echo "[entrypoint] backend internal path    = /api/...  (后端固定)"
-echo "[entrypoint] nginx external location  = ${BACKEND_PATH}/api/  -> rewrite -> /api/"
+echo "[entrypoint] backend internal routes  = /api/... /download/... /share/..."
+echo "[entrypoint] nginx external routes   = ${BACKEND_PATH}/{api,download,share}/... -> backend fixed routes"
+echo "[entrypoint] public share route      = /share/... -> /share/..."
 echo "[entrypoint] data dir                 = ${SUB_STORE_DATA_BASE_PATH:-/opt/app/data}"
 echo "[entrypoint] ============================================="
 echo "[entrypoint] rendered nginx config (location blocks):"

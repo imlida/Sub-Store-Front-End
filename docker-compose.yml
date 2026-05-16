@@ -5,13 +5,16 @@
 # 镜像仓库：https://hub.docker.com/r/aigood/sub-store-front-end
 #
 # 单容器内同时运行：
-#   - nginx：托管前端静态资源 + 反向代理后端 API（监听 80）
+#   - nginx：托管前端静态资源 + 反向代理后端路由（监听 80）
 #   - node sub-store.bundle.js：Sub-Store 后端（仅 127.0.0.1:3000，不对外暴露）
 #
 # 浏览器访问前端后，在「后端连接配置」弹窗里填写：
 #   - 默认（未设 SUB_STORE_FRONTEND_BACKEND_PATH）：/api
 #   - 自定义路径例（SUB_STORE_FRONTEND_BACKEND_PATH=/Aa1Bb2）：/Aa1Bb2/api
 # 或填完整 URL：http://<宿主机IP>:${HOST_PORT:-3001}<path>/api
+# 订阅下载与分享路由由 nginx 同步反代：
+#   - /<path>/download/... -> /download/...
+#   - /share/...           -> /share/...（公开分享链接固定根路径）
 
 services:
   sub-store:
@@ -27,8 +30,9 @@ services:
       # 后端监听 0.0.0.0 即可，nginx 通过 127.0.0.1 反向代理过去
       SUB_STORE_BACKEND_API_HOST: 0.0.0.0
       SUB_STORE_BACKEND_API_PORT: 3000
-      # 后端路由前缀。重要：Sub-Store 后端本身不读该变量，始终在 /api/... 监听；
-      # 该变量仅作为 nginx 反代层的“外部路径伪装”，/<PATH>/api/xxx 会被重写为 /api/xxx 后转发
+      # 后端路由前缀。该变量仅作为 nginx 反代层的“外部路径伪装”：
+      # /<PATH>/api/xxx 与 /<PATH>/download/xxx 会被重写为后端固定路由后转发。
+      # 公开分享链接固定使用 /share/xxx，不加随机路径，便于外部客户端访问。
       #   - 留空（默认）：前端填 /api
       #   - 设为 /Aa1Bb2Cc3Dd4（随机串）：前端填 /Aa1Bb2Cc3Dd4/api，外部扫 /api 扫不到
       SUB_STORE_FRONTEND_BACKEND_PATH: "${SUB_STORE_FRONTEND_BACKEND_PATH:-}"
