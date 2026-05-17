@@ -1,0 +1,32 @@
+services:
+  sub-store:
+    # 通过环境变量覆盖镜像版本，默认 latest
+    # 例如：SUB_STORE_TAG=2.17.6 docker compose up -d
+    image: aigood/sub-store-front-end:2.17.6.3
+    container_name: sub-store
+    restart: always
+    ports:
+      # 宿主机端口可通过 HOST_PORT 自定义，默认 3001（与现有内网部署 192.168.31.5:3001 一致）
+      - "3001:80"
+    environment:
+      # 后端监听 0.0.0.0 即可，nginx 通过 127.0.0.1 反向代理过去
+      SUB_STORE_BACKEND_API_HOST: 0.0.0.0
+      SUB_STORE_BACKEND_API_PORT: 3000
+      # 前端访问后端的路径前缀，建议改为不易猜测的随机串（同步影响 nginx 反向代理路径）
+      # 例：SUB_STORE_FRONTEND_BACKEND_PATH=/Aa1Bb2Cc3Dd4
+      SUB_STORE_FRONTEND_BACKEND_PATH: /ghjfgdsasfsdfsd
+      # 后端数据持久化目录（容器内）
+      SUB_STORE_DATA_BASE_PATH: /opt/app/data
+      # 可选：定时任务 cron 表达式，按需开启
+      # SUB_STORE_BACKEND_CRON: "55 23 * * *"
+      # SUB_STORE_BACKEND_SYNC_CRON: "0 0 * * *"
+    volumes:
+      # 持久化订阅配置/数据，容器重建后不会丢失
+      - ./data:/opt/app/data
+    healthcheck:
+      # 直接打后端 API，连通性 + 后端进程都能验证
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1${SUB_STORE_FRONTEND_BACKEND_PATH:-/api}/api/utils/env"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
